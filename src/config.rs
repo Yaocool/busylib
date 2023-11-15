@@ -17,3 +17,10 @@ pub fn env_var_with_default(name: &str, default: &str) -> ArcSwap<String> {
     };
     ArcSwap::from_pointee(val)
 }
+
+pub fn env_string_with_default(name: &str, default: &str) -> String {
+    match env::var(name) {
+        Ok(s) => s,
+        Err(_) => default.into(),
+    }
+}

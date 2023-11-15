@@ -1,15 +1,13 @@
 // #![allow(unused)]
 
-use std::path::Path;
-use std::{env, fs, path::PathBuf};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
-use log::{debug, warn};
 use time::UtcOffset;
 use tokio_cron_scheduler::Job;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{
-    filter,
     filter::Targets,
     fmt::{time::OffsetTime, MakeWriter},
     layer::SubscriberExt,
@@ -20,57 +18,91 @@ use tracing_subscriber::{
 };
 
 use crate::errors::RemoveFilesError;
-use crate::{
-    config::debug_mode,
-    prelude::{EnhancedExpect, EnhancedUnwrap},
-};
+use crate::prelude::EnhancedExpect;
 
 pub type LogHandle = Handle<Targets, Registry>;
 
-pub fn init_logger(
-    bin_name: &str,
-    crates_to_log: &[&str],
-    debug: bool,
-    log_directory: Option<PathBuf>,
-) -> (Option<WorkerGuard>, Option<LogHandle>) {
-    let level_filter = if debug {
-        filter::LevelFilter::DEBUG
-    } else {
-        filter::LevelFilter::INFO
-    };
+pub struct LogConfig {
+    level: tracing_subscriber::filter::LevelFilter,
+    /// start with bin name, following with other crates
+    crates_to_log: Vec<String>,
+    directory: Option<PathBuf>,
+    json_format: bool,
+}
 
-    let log_directory = {
-        if log_directory.is_some() {
-            log_directory.unwp()
-        } else {
-            log_path(None, None)
+impl LogConfig {
+    /// crates_to_log: start with bin name, following with other crates
+    pub fn new(crates_to_log: &[&str]) -> Self {
+        if crates_to_log.is_empty() {
+            panic!(
+                "must specify at least one name of crate/bin to log with `crates_to_log` argument"
+            )
         }
-    };
-
-    let timer = OffsetTime::new(
-        UtcOffset::from_hms(8, 0, 0).ex("UtcOffset::from_hms should work"),
-        time::format_description::well_known::Rfc3339,
-    );
-    let stdout_log = tracing_subscriber::fmt::layer().with_timer(timer.clone());
-    let reg = tracing_subscriber::registry();
-
-    let mut base_filter = Targets::new().with_target(bin_name, level_filter);
-    for crate_name in crates_to_log {
-        base_filter = base_filter.with_target(*crate_name, level_filter);
+        Self {
+            level: tracing_subscriber::filter::LevelFilter::INFO,
+            crates_to_log: crates_to_log.iter().map(|s| s.to_string()).collect(),
+            directory: None,
+            json_format: false,
+        }
     }
-    let (filter, reload_handle) = reload::Layer::new(base_filter.clone());
-    let file_appender =
-        tracing_appender::rolling::daily(log_directory, format!("{}.log", bin_name));
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-    let file_filter = tracing_subscriber::fmt::layer()
-        .with_timer(timer)
-        .with_writer(non_blocking.make_writer())
-        .json()
-        .with_filter(base_filter);
 
-    reg.with(stdout_log.with_filter(filter).and_then(file_filter))
-        .init();
-    (Some(guard), Some(reload_handle))
+    pub fn level(mut self, level: log::Level) -> Self {
+        self.level = match level {
+            log::Level::Error => tracing_subscriber::filter::LevelFilter::ERROR,
+            log::Level::Warn => tracing_subscriber::filter::LevelFilter::WARN,
+            log::Level::Info => tracing_subscriber::filter::LevelFilter::INFO,
+            log::Level::Debug => tracing_subscriber::filter::LevelFilter::DEBUG,
+            log::Level::Trace => tracing_subscriber::filter::LevelFilter::TRACE,
+        };
+        self
+    }
+
+    pub fn directory(mut self, directory: impl Into<PathBuf>) -> Self {
+        self.directory = Some(directory.into());
+        self
+    }
+
+    pub fn with_json_format(mut self) -> Self {
+        self.json_format = true;
+        self
+    }
+
+    pub fn init_logger(&self) -> (Option<WorkerGuard>, Option<LogHandle>) {
+        let timer = OffsetTime::new(
+            UtcOffset::from_hms(8, 0, 0).ex("UtcOffset::from_hms should work"),
+            time::format_description::well_known::Rfc3339,
+        );
+        let stdout_log = tracing_subscriber::fmt::layer().with_timer(timer.clone());
+        let reg = tracing_subscriber::registry();
+
+        let mut base_filter = Targets::new();
+        for crate_name in &self.crates_to_log {
+            base_filter = base_filter.with_target(crate_name, self.level);
+        }
+
+        let (filter, reload_handle) = reload::Layer::new(base_filter.clone());
+        let filtered = stdout_log.with_filter(filter);
+
+        if let Some(dir) = &self.directory {
+            let file_name_prefix = format!("{}.log", self.crates_to_log[0]);
+            let file_appender = tracing_appender::rolling::daily(dir, file_name_prefix);
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+            let layer = tracing_subscriber::fmt::layer()
+                .with_timer(timer)
+                .with_writer(non_blocking.make_writer());
+            if self.json_format {
+                let file_filter = layer.json().with_filter(base_filter);
+                reg.with(filtered.and_then(file_filter)).init();
+            } else {
+                let file_filter = layer.with_filter(base_filter);
+                reg.with(filtered.and_then(file_filter)).init();
+            }
+            return (Some(guard), Some(reload_handle));
+        }
+
+        reg.with(filtered).init();
+        (None, Some(reload_handle))
+    }
 }
 
 pub trait LogCleanerErrorHandler {
@@ -179,52 +211,21 @@ where
 pub fn change_debug(handle: &LogHandle, debug: &str) -> bool {
     // TODO: change_debug
     panic!("TODO: ");
-    let base_filter = filter::Targets::new().with_target("foo", filter::LevelFilter::DEBUG);
+    let base_filter =
+        Targets::new().with_target("foo", tracing_subscriber::filter::LevelFilter::DEBUG);
     handle.modify(|filter| *filter = base_filter);
     true
 }
 
-pub fn log_path(log_path: Option<&str>, env_log_path_key: Option<&str>) -> PathBuf {
-    if debug_mode() {
-        let dir = env::temp_dir();
-        debug!(
-            "log will be saved to temporary directory: {}",
-            dir.display()
-        );
-        return dir;
-    }
-
-    // log path from param is first if it have been set
-    if log_path.is_some() {
-        return PathBuf::from(log_path.unwp().trim());
-    }
-
-    // default log path
-    let log_path = r"/opt/logs/apps/";
-    if env_log_path_key.is_some() {
-        let env_log_path = env::var(env_log_path_key.unwp());
-        match env_log_path {
-            Ok(env_log_path) => return PathBuf::from(env_log_path),
-            Err(_) => warn!(
-                "{} is not set, use default log path: {}",
-                env_log_path_key.unwp(),
-                log_path
-            ),
-        }
-    };
-    PathBuf::from(log_path)
-}
-
 #[cfg(test)]
 mod logger_test {
+    use std::fs;
     use std::time::Duration;
-    use std::{env, fs};
 
     use crate::errors::RemoveFilesError;
     use chrono::{DateTime, Utc};
-    use log::{debug, info};
 
-    use crate::logger::{log_path, LogCleaner, LogCleanerErrorHandler};
+    use crate::logger::{LogCleaner, LogCleanerErrorHandler};
     use crate::prelude::EnhancedUnwrap;
 
     #[derive(Clone)]
@@ -290,26 +291,5 @@ mod logger_test {
             }
         }
         assert!(!has_files);
-    }
-
-    #[test]
-    fn test_get_log_path() {
-        let log_path_default = log_path(None, None);
-        assert_eq!(log_path_default.to_str().unwp(), "/opt/logs/apps/");
-
-        let log_path_from_param = log_path(Some("/a/b/c"), None);
-        assert_eq!(log_path_from_param.to_str().unwp(), "/a/b/c");
-
-        env::set_var("LOG_PATH", "/xx/xx");
-        let log_path_from_env = log_path(None, Some("LOG_PATH"));
-        assert_eq!(log_path_from_env.to_str().unwp(), "/xx/xx");
-    }
-
-    #[test]
-    fn test_init_logger() {
-        let log_path = log_path(Some("./"), None);
-        let (_, _) = super::init_logger("busylib", &["busylib"], false, Some(log_path));
-        debug!("test_init_logger - debug");
-        info!("test_init_logger - info, message: {}", "xxxadf");
     }
 }
