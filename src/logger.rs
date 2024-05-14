@@ -207,14 +207,41 @@ where
     }
 }
 
+pub fn change_log_level(handle: &LogHandle, crates_to_log: &[&str], level: log::Level) -> bool {
+    let (log_level_filter, tracing_level_filter) = match level {
+        log::Level::Error => (
+            log::LevelFilter::Error,
+            tracing_subscriber::filter::LevelFilter::ERROR,
+        ),
+        log::Level::Warn => (
+            log::LevelFilter::Warn,
+            tracing_subscriber::filter::LevelFilter::WARN,
+        ),
+        log::Level::Info => (
+            log::LevelFilter::Info,
+            tracing_subscriber::filter::LevelFilter::INFO,
+        ),
+        log::Level::Debug => (
+            log::LevelFilter::Debug,
+            tracing_subscriber::filter::LevelFilter::DEBUG,
+        ),
+        log::Level::Trace => (
+            log::LevelFilter::Trace,
+            tracing_subscriber::filter::LevelFilter::TRACE,
+        ),
+    };
+    log::set_max_level(log_level_filter);
+    let mut new_filter = Targets::new();
+    for crate_name in crates_to_log {
+        new_filter = new_filter.with_target(crate_name.to_string(), tracing_level_filter);
+    }
+
+    handle.modify(|filter| *filter = new_filter).is_ok()
+}
+
 #[allow(unused, unreachable_code)]
-pub fn change_debug(handle: &LogHandle, debug: &str) -> bool {
-    // TODO: change_debug
-    panic!("TODO: ");
-    let base_filter =
-        Targets::new().with_target("foo", tracing_subscriber::filter::LevelFilter::DEBUG);
-    handle.modify(|filter| *filter = base_filter);
-    true
+pub fn change_debug(handle: &LogHandle, crates_to_log: &[&str]) -> bool {
+    change_log_level(handle, crates_to_log, log::Level::Debug)
 }
 
 #[cfg(test)]
@@ -224,8 +251,11 @@ mod logger_test {
 
     use crate::errors::RemoveFilesError;
     use chrono::{DateTime, Utc};
+    use log::{debug, info};
 
-    use crate::logger::{LogCleaner, LogCleanerErrorHandler};
+    use crate::logger::{
+        change_debug, change_log_level, LogCleaner, LogCleanerErrorHandler, LogConfig,
+    };
     use crate::prelude::EnhancedUnwrap;
 
     #[derive(Clone)]
@@ -291,5 +321,24 @@ mod logger_test {
             }
         }
         assert!(!has_files);
+    }
+
+    #[test]
+    fn test_change_debug() {
+        let crates_to_log: &[&str; 1] = &["busylib"];
+        let (_, log_handler) = LogConfig::new(crates_to_log).init_logger();
+        debug!("------- debug log -------");
+        info!("------- info log -------");
+        let log_handler = log_handler.unwp();
+        let debug_level_res = change_debug(&log_handler, crates_to_log);
+        assert!(debug_level_res);
+        debug!("------- debug log after changed log level to `debug` -------");
+        info!("------- info log after changed log level to `debug` -------");
+        let info_level_res = change_log_level(&log_handler, crates_to_log, log::Level::Info);
+        assert!(info_level_res);
+        debug!("------- debug log after changed log level to `info` -------");
+        info!("------- info log after changed log level to `info` -------");
+        // sleep 2 s to flush log to file
+        std::thread::sleep(std::time::Duration::from_secs(2));
     }
 }
