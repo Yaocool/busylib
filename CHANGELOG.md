@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.0] - 2024-05-14
+
+### Features
+
+- Add LogConfig and env_string_with_default.
+
+## [v0.5.0] - 2023-11-15
+
+### Features
+
+- Add LogConfig and env_string_with_default.
+
+## [v0.4.1] - 2023-10-16
+
+### Features
+
+- Support custom error handling for log cleaner.
+
+### Refactor
+
+- Make logger.rs idiomatic with rich typing and functional paradigm.
+
 ## [v0.4.0] - 2023-08-24
 
 ### Features
