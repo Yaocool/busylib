@@ -9,3 +9,24 @@ pub fn default_reqwest_client() -> reqwest::Client {
         .build()
         .unwp()
 }
+
+#[cfg(test)]
+mod test {
+    use crate::http::default_reqwest_client;
+
+    #[tokio::test]
+    async fn query() {
+        let ip_info = default_reqwest_client()
+            .get("http://cip.cc")
+            .header("User-Agent", "curl")
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap()
+            // 20221222: remove special characters in response of cip.cc (IP_PROVIDER)
+            .replace(['\n', '\t'], "");
+        dbg!(ip_info);
+    }
+}
