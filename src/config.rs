@@ -1,4 +1,5 @@
 use std::env;
+use std::path::PathBuf;
 
 use arc_swap::ArcSwap;
 use once_cell::sync::Lazy;
@@ -23,4 +24,8 @@ pub fn env_string_with_default(name: &str, default: &str) -> String {
         Ok(s) => s,
         Err(_) => default.into(),
     }
+}
+
+pub fn dotenv() -> dotenv::Result<PathBuf> {
+    dotenv::dotenv()
 }

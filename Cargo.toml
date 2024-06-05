@@ -1,6 +1,6 @@
 [package]
 name = "busylib"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2021"
 
 [dependencies]
@@ -17,3 +17,4 @@ magic-crypt = "3.1"
 reqwest = { version = "0.12.4", default-features = false, features = ["json", "rustls-tls"]}
 chrono = "0.4.28"
 tokio-cron-scheduler = "0.9.4"
+dotenv = "0.15"
