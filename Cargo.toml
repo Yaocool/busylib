@@ -1,6 +1,6 @@
 [package]
 name = "busylib"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 
 [dependencies]
@@ -14,7 +14,20 @@ time = "0.3.28"
 arc-swap = "1.5.1"
 once_cell = "1.15.0"
 magic-crypt = "3.1"
-reqwest = { version = "0.12.4", default-features = false, features = ["json", "rustls-tls"]}
 chrono = "0.4.28"
 tokio-cron-scheduler = "0.9.4"
 dotenv = "0.15"
+
+reqwest = { version = "0.12.4", default-features = false, features = ["json", "rustls-tls"], optional = true }
+http = { version = "1", optional = true }
+http-body = { version = "1.0.0", optional = true }
+http-body-util = { version = "0.1", optional = true }
+bytes = { version = "1", optional = true }
+futures-core = { version = "0.3.30", optional = true }
+futures-util = { version = "0.3.30", optional = true }
+pin-project-lite = { version = "0.2.14", optional = true }
+sync_wrapper = { version = "0.1.2", optional = true }
+
+[features]
+http-client = ["reqwest"]
+http-util = ["http", "http-body", "http-body-util", "bytes", "futures-core", "futures-util", "pin-project-lite", "sync_wrapper"]

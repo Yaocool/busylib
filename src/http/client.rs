@@ -2,6 +2,8 @@ use crate::prelude::EnhancedUnwrap;
 
 pub type ReqwestError = reqwest::Error;
 pub type ReqwestClient = reqwest::Client;
+pub use reqwest::ClientBuilder;
+pub use reqwest::Proxy;
 
 pub fn default_reqwest_client() -> reqwest::Client {
     reqwest::Client::builder()
@@ -12,7 +14,7 @@ pub fn default_reqwest_client() -> reqwest::Client {
 
 #[cfg(test)]
 mod test {
-    use crate::http::default_reqwest_client;
+    use crate::http::client::default_reqwest_client;
 
     #[tokio::test]
     async fn query() {
