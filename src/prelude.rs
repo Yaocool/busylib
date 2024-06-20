@@ -14,15 +14,14 @@ impl DisplayBackTrace for Backtrace {
         let mut skip_next_line = false;
         let mut is_function_name_line = true;
         for (i, line) in split.enumerate() {
-            let first_colon_index = line.find(':').unwrap_or(0);
-            let string_after_colon_with_space = if line.is_empty() {
-                ""
-            } else {
-                &line[first_colon_index + 2..]
-            };
             if i < 8 {
                 continue;
             }
+            let string_after_colon_with_space = if line.is_empty() {
+                ""
+            } else {
+                &line[line.find(':').unwrap_or(0) + 2..]
+            };
             if skip_next_line {
                 skip_next_line = false;
                 continue;
