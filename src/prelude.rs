@@ -20,33 +20,34 @@ impl DisplayBackTrace for Backtrace {
             } else {
                 &line[first_colon_index + 2..]
             };
-            if i >= 8 {
-                if skip_next_line {
-                    skip_next_line = false;
-                    continue;
-                }
-                if string_after_colon_with_space.starts_with("busylib::")
-                    || string_after_colon_with_space.starts_with("tokio::")
-                    || string_after_colon_with_space.contains("busylib::prelude::EnhancedExpect")
-                {
-                    skip_next_line = true;
-                    continue;
-                }
-                if string_after_colon_with_space
-                    .starts_with("std::sys_common::backtrace::__rust_begin_short_backtrace")
-                    || string_after_colon_with_space.starts_with("<F as axum::handler::Handler")
-                {
-                    break;
-                }
-                if !is_function_name_line {
-                    result.push(' ');
-                }
-                result.push_str(line.trim_start_matches(' '));
-                if !is_function_name_line {
-                    result.push('\n');
-                }
-                is_function_name_line = !is_function_name_line;
+            if i < 8 {
+                continue;
             }
+            if skip_next_line {
+                skip_next_line = false;
+                continue;
+            }
+            if string_after_colon_with_space.starts_with("busylib::")
+                || string_after_colon_with_space.starts_with("tokio::")
+                || string_after_colon_with_space.contains("busylib::prelude::EnhancedExpect")
+            {
+                skip_next_line = true;
+                continue;
+            }
+            if string_after_colon_with_space
+                .starts_with("std::sys_common::backtrace::__rust_begin_short_backtrace")
+                || string_after_colon_with_space.starts_with("<F as axum::handler::Handler")
+            {
+                break;
+            }
+            if !is_function_name_line {
+                result.push(' ');
+            }
+            result.push_str(line.trim_start_matches(' '));
+            if !is_function_name_line {
+                result.push('\n');
+            }
+            is_function_name_line = !is_function_name_line;
         }
         result
     }
