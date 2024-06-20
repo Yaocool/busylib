@@ -3,21 +3,52 @@ use std::{backtrace::Backtrace, fmt::Display};
 use log::error;
 
 trait DisplayBackTrace {
-    fn to_simple_string(&self) -> String;
+    fn to_human_readable(&self) -> String;
 }
 
 impl DisplayBackTrace for Backtrace {
-    fn to_simple_string(&self) -> String {
+    fn to_human_readable(&self) -> String {
         let full = format!("{}", self);
         let split = full.split('\n');
-        let mut trimmed = String::new();
+        let mut result = String::new();
+        let mut skip_next_line = false;
+        let mut is_function_name_line = true;
         for (i, line) in split.enumerate() {
-            if (8..32).contains(&i) {
-                trimmed.push_str(line);
-                trimmed.push('\n');
+            let first_colon_index = line.find(':').unwrap_or(0);
+            let string_after_colon_with_space = if line.is_empty() {
+                ""
+            } else {
+                &line[first_colon_index + 2..]
+            };
+            if i >= 8 {
+                if skip_next_line {
+                    skip_next_line = false;
+                    continue;
+                }
+                if string_after_colon_with_space.starts_with("busylib::")
+                    || string_after_colon_with_space.starts_with("tokio::")
+                    || string_after_colon_with_space.contains("busylib::prelude::EnhancedExpect")
+                {
+                    skip_next_line = true;
+                    continue;
+                }
+                if string_after_colon_with_space
+                    .starts_with("std::sys_common::backtrace::__rust_begin_short_backtrace")
+                    || string_after_colon_with_space.starts_with("<F as axum::handler::Handler")
+                {
+                    break;
+                }
+                if !is_function_name_line {
+                    result.push(' ');
+                }
+                result.push_str(line.trim_start_matches(' '));
+                if !is_function_name_line {
+                    result.push('\n');
+                }
+                is_function_name_line = !is_function_name_line;
             }
         }
-        trimmed
+        result
     }
 }
 
@@ -103,8 +134,28 @@ fn log_and_panic<E: Display>(err: Option<E>, msg: &str) -> ! {
         "this should never happen: {}, context: {}, back_trace: {}",
         err_msg,
         msg,
-        Backtrace::force_capture().to_simple_string()
+        Backtrace::force_capture().to_human_readable()
     );
     error!("{}", info);
     panic!("{}", info);
+}
+
+#[cfg(test)]
+mod test {
+    use crate::prelude::EnhancedExpect;
+
+    #[tokio::test]
+    async fn prelude_ex() {
+        let counter = std::sync::atomic::AtomicUsize::new(0);
+        tokio::spawn(async move {
+            loop {
+                let a: Option<usize> = None;
+                counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if counter.load(std::sync::atomic::Ordering::Relaxed) == 2 {
+                    a.ex("on purpose");
+                }
+            }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
 }
